@@ -64,6 +64,7 @@ class DotMDService:
             model_name=self._settings.reranker_model,
             length_penalty=self._settings.reranker_length_penalty,
             min_length=self._settings.reranker_min_length,
+            score_threshold=self._settings.rerank_score_threshold,
         )
 
     # ------------------------------------------------------------------
@@ -197,6 +198,7 @@ class DotMDService:
             fused[:top_k],
             per_engine=engine_results,
             metadata_store=self._pipeline.metadata_store,
+            query=query,
             top_k=top_k,
             snippet_length=self._settings.snippet_length,
         )

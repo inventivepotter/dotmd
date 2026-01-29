@@ -41,11 +41,13 @@ class Reranker:
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
         length_penalty: bool = True,
         min_length: int = 100,
+        score_threshold: float = -5.0,
     ) -> None:
         self._model_name = model_name
         self._model: Any | None = None
         self._length_penalty = length_penalty
         self._min_length = min_length
+        self._score_threshold = score_threshold
 
     # ------------------------------------------------------------------
     # Internals
@@ -126,6 +128,7 @@ class Reranker:
         scored = [
             (cid, float(score))
             for (cid, _text), score in zip(id_text_pairs, scores)
+            if score >= self._score_threshold
         ]
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:top_k]

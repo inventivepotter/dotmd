@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     default_top_k: int = 10
     fusion_k: int = 60  # RRF constant
     rerank_pool_size: int = 20  # candidates to rerank
+    rerank_score_threshold: float = -5.0  # discard results below this score
     snippet_length: int = 300  # display snippet character limit
 
     # Graph

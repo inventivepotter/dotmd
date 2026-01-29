@@ -10,12 +10,76 @@ This module provides two functions:
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from dotmd.core.models import SearchResult
 
 if TYPE_CHECKING:
     from dotmd.storage.base import MetadataStoreProtocol
+
+
+def _extract_best_snippet(text: str, query: str, length: int = 300) -> str:
+    """Find the window of *length* chars in *text* with the most query term overlap."""
+    if len(text) <= length:
+        return text
+
+    query_tokens = set(re.findall(r"\w+", query.lower()))
+    if not query_tokens:
+        # Fallback to start of text
+        return _truncate(text, length)
+
+    # Score each window position (slide by sentences/words for speed)
+    words = text.split()
+    best_score = -1
+    best_start = 0
+
+    # Build character position index for word boundaries
+    char_pos = 0
+    word_starts: list[int] = []
+    for w in words:
+        idx = text.index(w, char_pos)
+        word_starts.append(idx)
+        char_pos = idx + len(w)
+
+    for i, start in enumerate(word_starts):
+        end = start + length
+        if end > len(text):
+            start = max(0, len(text) - length)
+            end = len(text)
+
+        window = text[start:end].lower()
+        score = sum(1 for t in query_tokens if t in window)
+
+        if score > best_score:
+            best_score = score
+            best_start = start
+
+        if end >= len(text):
+            break
+
+    snippet_text = text[best_start : best_start + length]
+
+    # Add ellipsis indicators
+    prefix = "..." if best_start > 0 else ""
+    suffix = "..." if best_start + length < len(text) else ""
+
+    # Word-aware truncation at the end
+    if suffix:
+        last_space = snippet_text.rfind(" ")
+        if last_space > len(snippet_text) * 0.8:
+            snippet_text = snippet_text[:last_space]
+
+    return prefix + snippet_text + suffix
+
+
+def _truncate(text: str, length: int) -> str:
+    """Word-aware truncation fallback."""
+    truncated = text[:length]
+    last_space = truncated.rfind(" ")
+    if last_space > length * 0.8:
+        return truncated[:last_space] + "..."
+    return truncated + "..."
 
 
 # Score field names on SearchResult keyed by canonical engine name.
@@ -69,6 +133,7 @@ def build_search_results(
     fused: list[tuple[str, float]],
     per_engine: dict[str, list[tuple[str, float]]],
     metadata_store: MetadataStoreProtocol,
+    query: str = "",
     top_k: int = 10,
     snippet_length: int = 300,
 ) -> list[SearchResult]:
@@ -114,17 +179,7 @@ def build_search_results(
 
         heading_path = " > ".join(chunk.heading_hierarchy) if chunk.heading_hierarchy else ""
 
-        # Create snippet with word-aware truncation
-        if len(chunk.text) <= snippet_length:
-            snippet = chunk.text
-        else:
-            # Truncate at snippet_length, then find last space to avoid mid-word cut
-            truncated = chunk.text[:snippet_length]
-            last_space = truncated.rfind(' ')
-            if last_space > snippet_length * 0.8:  # Only if we don't lose too much
-                snippet = truncated[:last_space] + "..."
-            else:
-                snippet = truncated + "..."
+        snippet = _extract_best_snippet(chunk.text, query, snippet_length)
 
         # Determine which engines matched and their individual scores.
         matched_engines: list[str] = []
