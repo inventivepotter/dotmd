@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dotmd"
+version = "0.1.0"
+description = "Markdown knowledgebase search tool with semantic, keyword, and graph-based retrieval"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.0",
+    "sentence-transformers>=3.0",
+    "lancedb>=0.6",
+    "rank-bm25>=0.2",
+    "real_ladybug>=0.1",
+    "gliner>=0.2",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+    "pandas>=2.0",
+]
+
+[project.scripts]
+dotmd = "dotmd.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dotmd"]
+sources = ["src"]
