@@ -17,24 +17,35 @@ logger = logging.getLogger(__name__)
 
 
 class Reranker:
-    """Cross-encoder reranker with lazy model loading.
+    """Cross-encoder reranker with lazy model loading and length penalty.
 
     The underlying ``CrossEncoder`` is instantiated on the first call to
     :meth:`rerank` so that import time stays fast and GPU/CPU resources
     are only consumed when actually needed.
 
+    Optionally applies a length penalty to downrank very short chunks
+    (e.g., navigation tables) that may be keyword-dense but lack content.
+
     Parameters
     ----------
     model_name:
         HuggingFace model identifier for the cross-encoder.
+    length_penalty:
+        If True, apply a penalty to chunks shorter than *min_length*.
+    min_length:
+        Minimum character length below which the penalty is applied.
     """
 
     def __init__(
         self,
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        length_penalty: bool = True,
+        min_length: int = 100,
     ) -> None:
         self._model_name = model_name
         self._model: Any | None = None
+        self._length_penalty = length_penalty
+        self._min_length = min_length
 
     # ------------------------------------------------------------------
     # Internals
@@ -99,6 +110,18 @@ class Reranker:
         model = self._load_model()
         pairs = [(query, text) for _, text in id_text_pairs]
         scores: list[float] = model.predict(pairs).tolist()  # type: ignore[union-attr]
+
+        # Apply length penalty to short chunks if enabled
+        if self._length_penalty:
+            adjusted_scores = []
+            for score, (cid, text) in zip(scores, id_text_pairs):
+                text_length = len(text)
+                if text_length < self._min_length:
+                    # Penalty factor: 0.5 at length=0, 1.0 at min_length
+                    penalty_factor = 0.5 + 0.5 * (text_length / self._min_length)
+                    score = score * penalty_factor
+                adjusted_scores.append(score)
+            scores = adjusted_scores
 
         scored = [
             (cid, float(score))

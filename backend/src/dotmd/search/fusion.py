@@ -70,6 +70,7 @@ def build_search_results(
     per_engine: dict[str, list[tuple[str, float]]],
     metadata_store: MetadataStoreProtocol,
     top_k: int = 10,
+    snippet_length: int = 300,
 ) -> list[SearchResult]:
     """Convert fused scores into fully hydrated :class:`SearchResult` objects.
 
@@ -88,6 +89,9 @@ def build_search_results(
         A store satisfying :class:`MetadataStoreProtocol`.
     top_k:
         Maximum number of results to return.
+    snippet_length:
+        Maximum length for the text snippet (default 300 characters).
+        Truncation is word-aware to avoid cutting mid-word.
 
     Returns
     -------
@@ -109,7 +113,18 @@ def build_search_results(
             continue
 
         heading_path = " > ".join(chunk.heading_hierarchy) if chunk.heading_hierarchy else ""
-        snippet = chunk.text[:200]
+
+        # Create snippet with word-aware truncation
+        if len(chunk.text) <= snippet_length:
+            snippet = chunk.text
+        else:
+            # Truncate at snippet_length, then find last space to avoid mid-word cut
+            truncated = chunk.text[:snippet_length]
+            last_space = truncated.rfind(' ')
+            if last_space > snippet_length * 0.8:  # Only if we don't lose too much
+                snippet = truncated[:last_space] + "..."
+            else:
+                snippet = truncated + "..."
 
         # Determine which engines matched and their individual scores.
         matched_engines: list[str] = []

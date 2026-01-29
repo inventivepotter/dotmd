@@ -52,9 +52,19 @@ class DotMDService:
             self._pipeline.metadata_store,
         )
 
+        # Load acronym dictionary if available
+        acronym_dict = self._load_acronyms()
+
         # Query expansion and reranking.
-        self._query_expander = QueryExpander(self._pipeline.metadata_store)
-        self._reranker = Reranker(model_name=self._settings.reranker_model)
+        self._query_expander = QueryExpander(
+            self._pipeline.metadata_store,
+            acronym_dict=acronym_dict,
+        )
+        self._reranker = Reranker(
+            model_name=self._settings.reranker_model,
+            length_penalty=self._settings.reranker_length_penalty,
+            min_length=self._settings.reranker_min_length,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -188,6 +198,7 @@ class DotMDService:
             per_engine=engine_results,
             metadata_store=self._pipeline.metadata_store,
             top_k=top_k,
+            snippet_length=self._settings.snippet_length,
         )
 
         return results
@@ -205,3 +216,23 @@ class DotMDService:
     def clear(self) -> None:
         """Remove all indexed data from every backing store."""
         self._pipeline.clear()
+
+    def _load_acronyms(self) -> dict[str, list[str]] | None:
+        """Load acronym dictionary from disk if available.
+
+        Returns
+        -------
+        dict[str, list[str]] | None
+            Acronym dictionary, or None if file doesn't exist.
+        """
+        import json
+
+        if not self._settings.acronyms_path.exists():
+            return None
+
+        try:
+            with open(self._settings.acronyms_path) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning("Failed to load acronyms: %s", e)
+            return None

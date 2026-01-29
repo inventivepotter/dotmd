@@ -12,6 +12,7 @@ from pathlib import Path
 
 from dotmd.core.config import Settings
 from dotmd.core.models import Chunk, ExtractionResult, IndexStats
+from dotmd.extraction.acronyms import extract_acronyms_from_chunks
 from dotmd.extraction.ner import NERExtractor
 from dotmd.extraction.structural import StructuralExtractor
 from dotmd.ingestion.chunker import chunk_file
@@ -188,7 +189,17 @@ class IndexingPipeline:
                 relation_type="CONTAINS",
             )
 
-        # 9. Build and persist stats
+        # 9. Extract and persist acronym dictionary
+        acronym_dict = extract_acronyms_from_chunks(all_chunks)
+        if acronym_dict:
+            import json
+
+            self._settings.acronyms_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._settings.acronyms_path, "w") as f:
+                json.dump(acronym_dict, f, indent=2)
+            logger.info("Extracted %d acronyms", len(acronym_dict))
+
+        # 10. Build and persist stats
         stats = IndexStats(
             total_files=len(files),
             total_chunks=len(all_chunks),
@@ -206,6 +217,11 @@ class IndexingPipeline:
         self._metadata_store.delete_all()
         self._vector_store.delete_all()
         self._graph_store.delete_all()
+
+        # Delete acronym dictionary
+        if self._settings.acronyms_path.exists():
+            self._settings.acronyms_path.unlink()
+
         logger.info("All stores cleared")
 
     # ------------------------------------------------------------------

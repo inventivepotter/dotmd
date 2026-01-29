@@ -28,6 +28,8 @@ class Settings(BaseSettings):
 
     # Reranker
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_length_penalty: bool = True  # penalize very short chunks
+    reranker_min_length: int = 100  # chars below which penalty applies
 
     # Chunking
     max_chunk_tokens: int = 512
@@ -50,6 +52,7 @@ class Settings(BaseSettings):
     default_top_k: int = 10
     fusion_k: int = 60  # RRF constant
     rerank_pool_size: int = 20  # candidates to rerank
+    snippet_length: int = 300  # display snippet character limit
 
     # Graph
     graph_max_hops: int = 2
@@ -69,3 +72,7 @@ class Settings(BaseSettings):
     @property
     def bm25_path(self) -> Path:
         return self.index_dir / "bm25_index.pkl"
+
+    @property
+    def acronyms_path(self) -> Path:
+        return self.index_dir / "acronyms.json"
