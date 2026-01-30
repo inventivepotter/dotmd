@@ -13,6 +13,7 @@ from pathlib import Path
 from dotmd.core.config import Settings
 from dotmd.core.models import Chunk, ExtractionResult, IndexStats
 from dotmd.extraction.acronyms import extract_acronyms_from_chunks
+from dotmd.extraction.keyterms import KeyTermExtractor
 from dotmd.extraction.ner import NERExtractor
 from dotmd.extraction.structural import StructuralExtractor
 from dotmd.ingestion.chunker import chunk_file
@@ -58,6 +59,7 @@ class IndexingPipeline:
 
         # -- extractors --------------------------------------------------------
         self._structural_extractor = StructuralExtractor()
+        self._keyterm_extractor = KeyTermExtractor()
         self._ner_extractor: NERExtractor | None = None
         if settings.extract_depth == "ner":
             self._ner_extractor = NERExtractor(settings.ner_entity_types)
@@ -141,9 +143,25 @@ class IndexingPipeline:
                 len(ner_result.relations),
             )
 
-        # 8. Populate graph store
-        all_entities = structural_result.entities + ner_result.entities
-        all_relations = structural_result.relations + ner_result.relations
+        # 8. Key-term extraction (TF-IDF + acronyms + heading terms)
+        keyterm_result = self._keyterm_extractor.extract(all_chunks)
+        logger.info(
+            "Key-term extraction: %d entities, %d relations",
+            len(keyterm_result.entities),
+            len(keyterm_result.relations),
+        )
+
+        # 9. Populate graph store
+        all_entities = (
+            structural_result.entities
+            + ner_result.entities
+            + keyterm_result.entities
+        )
+        all_relations = (
+            structural_result.relations
+            + ner_result.relations
+            + keyterm_result.relations
+        )
 
         # Add entity nodes
         for entity in all_entities:

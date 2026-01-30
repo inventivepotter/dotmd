@@ -187,7 +187,11 @@ class DotMDService:
         if graph_hits:
             engine_results["graph"] = graph_hits
 
-        fused = fuse_results(engine_results, k=self._settings.fusion_k)
+        fused = fuse_results(
+            engine_results,
+            k=self._settings.fusion_k,
+            engine_weights={"graph": self._settings.graph_rrf_weight},
+        )
 
         # -- Optional reranking -----------------------------------------------
         if rerank and fused:

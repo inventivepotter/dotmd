@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # Search
     default_top_k: int = 10
     fusion_k: int = 60  # RRF constant
+    graph_rrf_weight: float = 1.5  # boost graph-unique discoveries in RRF
     rerank_pool_size: int = 20  # candidates to rerank
     rerank_score_threshold: float = -8.0  # discard results below this score
     semantic_score_floor: float = 0.4  # minimum cosine similarity to keep

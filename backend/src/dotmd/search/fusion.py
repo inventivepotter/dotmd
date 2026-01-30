@@ -93,16 +93,17 @@ _ENGINE_SCORE_FIELDS: dict[str, str] = {
 def fuse_results(
     ranked_lists: dict[str, list[tuple[str, float]]],
     k: int = 60,
+    engine_weights: dict[str, float] | None = None,
 ) -> list[tuple[str, float]]:
     """Merge multiple ranked lists using Reciprocal Rank Fusion.
 
     For every chunk that appears in at least one list the fused score is
     computed as::
 
-        score = sum(1 / (k + rank_i))
+        score = sum(weight_i / (k + rank_i))
 
     where *rank_i* is the **1-based** position of the chunk in each
-    engine's result list.
+    engine's result list and *weight_i* is the engine weight (default 1.0).
 
     Parameters
     ----------
@@ -112,6 +113,10 @@ def fuse_results(
     k:
         The RRF constant (default ``60``).  Higher values dampen the
         influence of top-ranked results.
+    engine_weights:
+        Optional per-engine weights.  Engines not listed default to 1.0.
+        Use higher weights for engines that discover unique content
+        (e.g. ``{"graph": 1.5}``).
 
     Returns
     -------
@@ -119,12 +124,14 @@ def fuse_results(
         A list of ``(chunk_id, fused_score)`` pairs sorted by
         descending fused score.
     """
+    weights = engine_weights or {}
     rrf_scores: dict[str, float] = {}
 
-    for _engine, results in ranked_lists.items():
+    for engine, results in ranked_lists.items():
+        w = weights.get(engine, 1.0)
         for rank_0, (chunk_id, _score) in enumerate(results):
             rank = rank_0 + 1  # 1-based
-            rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
+            rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + w / (k + rank)
 
     return sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 

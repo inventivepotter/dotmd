@@ -87,10 +87,8 @@ class GraphSearchEngine:
         seed_set = set(seed_chunk_ids)
 
         for seed_id in seed_chunk_ids:
-            # Single call with max_hops=2 returns both hop-1 and hop-2 nodes.
-            # All returned nodes are scored as hop-1 (weight as-is) since the
-            # store already limits the radius and hop-2 nodes naturally have
-            # lower edge weights.
+            # max_hops=2 walks: Section→Entity (hop 1) → Section (hop 2)
+            # This is how entity-mediated chunk discovery works.
             neighbors = self._graph_store.get_neighbors(seed_id, max_hops=2)
             for node_id, _rel, weight in neighbors:
                 if node_id != seed_id:
@@ -100,6 +98,19 @@ class GraphSearchEngine:
         # double-count results already present from another engine.
         for sid in seed_set:
             aggregated_scores.pop(sid, None)
+
+        # Filter to only valid chunk IDs (Section nodes).  The traversal
+        # also reaches Entity/Tag/File nodes which aren't searchable
+        # results — discard them by checking the metadata store.
+        candidate_ids = list(aggregated_scores.keys())
+        if candidate_ids:
+            valid_chunks = self._metadata_store.get_chunks(candidate_ids)
+            valid_ids = {c.chunk_id for c in valid_chunks}
+            aggregated_scores = {
+                cid: score
+                for cid, score in aggregated_scores.items()
+                if cid in valid_ids
+            }
 
         # Sort by descending score and return top-k.
         sorted_results = sorted(
