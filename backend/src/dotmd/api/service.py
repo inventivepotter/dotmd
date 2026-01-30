@@ -45,6 +45,7 @@ class DotMDService:
         self._semantic_engine = SemanticSearchEngine(
             self._pipeline.vector_store,
             self._settings.embedding_model,
+            score_floor=self._settings.semantic_score_floor,
         )
         self._bm25_engine = BM25SearchEngine(self._settings.bm25_path)
         self._graph_engine = GraphSearchEngine(
@@ -191,12 +192,32 @@ class DotMDService:
         # -- Optional reranking -----------------------------------------------
         if rerank and fused:
             chunk_ids = [cid for cid, _ in fused[:pool_size]]
-            fused = self._reranker.rerank(
-                query,
+            fused_scores = {cid: score for cid, score in fused[:pool_size]}
+            reranked = self._reranker.rerank(
+                search_query,
                 chunk_ids,
                 self._pipeline.metadata_store,
                 top_k=pool_size,
             )
+            # Blend reranker scores with fusion scores via min-max normalization
+            if reranked:
+                re_scores = [s for _, s in reranked]
+                re_min, re_max = min(re_scores), max(re_scores)
+                re_range = re_max - re_min if re_max > re_min else 1.0
+
+                f_vals = [fused_scores[cid] for cid, _ in reranked if cid in fused_scores]
+                f_min = min(f_vals) if f_vals else 0.0
+                f_max = max(f_vals) if f_vals else 1.0
+                f_range = f_max - f_min if f_max > f_min else 1.0
+
+                blended = []
+                for cid, re_score in reranked:
+                    norm_re = (re_score - re_min) / re_range
+                    raw_f = fused_scores.get(cid, f_min)
+                    norm_f = (raw_f - f_min) / f_range
+                    blended.append((cid, 0.4 * norm_f + 0.6 * norm_re))
+                blended.sort(key=lambda x: x[1], reverse=True)
+                fused = blended
 
         # -- Build final SearchResult list ------------------------------------
         results = build_search_results(
@@ -219,6 +240,10 @@ class DotMDService:
             The most recent index statistics.
         """
         return self._pipeline.metadata_store.get_stats()
+
+    def graph_data(self) -> dict:
+        """Return all graph nodes and edges for visualization."""
+        return self._pipeline.graph_store.get_graph_data()
 
     def clear(self) -> None:
         """Remove all indexed data from every backing store."""

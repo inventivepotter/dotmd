@@ -140,7 +140,7 @@ class BM25SearchEngine:
         for idx in top_indices:
             score = float(scores[idx])
             if score <= 0.0:
-                break
+                continue
             results.append((self._data.chunk_ids[idx], score))
 
         return results

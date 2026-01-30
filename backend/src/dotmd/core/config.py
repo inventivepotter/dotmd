@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # Reranker
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_length_penalty: bool = True  # penalize very short chunks
-    reranker_min_length: int = 100  # chars below which penalty applies
+    reranker_min_length: int = 50  # chars below which penalty applies
 
     # Chunking
     max_chunk_tokens: int = 512
@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     fusion_k: int = 60  # RRF constant
     rerank_pool_size: int = 20  # candidates to rerank
     rerank_score_threshold: float = -8.0  # discard results below this score
+    semantic_score_floor: float = 0.4  # minimum cosine similarity to keep
     snippet_length: int = 300  # display snippet character limit
 
     # Graph

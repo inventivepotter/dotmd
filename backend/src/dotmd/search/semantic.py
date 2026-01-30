@@ -39,10 +39,12 @@ class SemanticSearchEngine:
         self,
         vector_store: VectorStoreProtocol,
         model_name: str = _DEFAULT_MODEL,
+        score_floor: float = 0.0,
     ) -> None:
         self._vector_store = vector_store
         self._model_name = model_name
         self._model: SentenceTransformer | None = None
+        self._score_floor = score_floor
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -123,4 +125,7 @@ class SemanticSearchEngine:
             descending similarity.
         """
         query_embedding = self.encode(query)
-        return self._vector_store.search(query_embedding, top_k=top_k)
+        results = self._vector_store.search(query_embedding, top_k=top_k)
+        if self._score_floor > 0.0:
+            results = [(cid, s) for cid, s in results if s >= self._score_floor]
+        return results

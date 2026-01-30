@@ -5,11 +5,20 @@ from __future__ import annotations
 import re
 
 
+_STOP_WORDS: frozenset[str] = frozenset(
+    "a an and are as at be but by for from has have he her his how i if in "
+    "into is it its just me my no nor not of on or our own s she so some such "
+    "t than that the their them then there these they this to too up us very "
+    "was we were what when where which while who whom why will with would you "
+    "your yours do does did doing been being am".split()
+)
+
+
 def tokenize(text: str) -> list[str]:
-    """Simple whitespace + punctuation tokenizer for BM25."""
+    """Whitespace + punctuation tokenizer with stop-word removal for BM25."""
     text = text.lower()
     tokens = re.findall(r"\b\w+\b", text)
-    return tokens
+    return [t for t in tokens if t not in _STOP_WORDS]
 
 
 def estimate_tokens(text: str) -> int:

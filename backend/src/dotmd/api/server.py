@@ -61,6 +61,24 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    properties: dict
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    relation_type: str
+    weight: float
+
+
+class GraphResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
 # -- Endpoints -----------------------------------------------------------------
 
 @app.post("/index", response_model=IndexStats)
@@ -103,6 +121,16 @@ async def clear() -> MessageResponse:
     """Remove all indexed data."""
     _get_service().clear()
     return MessageResponse(message="Index cleared")
+
+
+@app.get("/graph", response_model=GraphResponse)
+async def graph() -> GraphResponse:
+    """Return all graph nodes and edges for visualization."""
+    data = _get_service().graph_data()
+    return GraphResponse(
+        nodes=[GraphNode(**n) for n in data["nodes"]],
+        edges=[GraphEdge(**e) for e in data["edges"]],
+    )
 
 
 def main(host: str = "127.0.0.1", port: int = 8000) -> None:

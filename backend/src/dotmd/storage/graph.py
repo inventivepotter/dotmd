@@ -246,6 +246,70 @@ class LadybugDBGraphStore:
                 except Exception:
                     pass
 
+    def get_graph_data(self) -> dict:
+        """Return all nodes and edges for visualization."""
+        nodes: list[dict] = []
+        edges: list[dict] = []
+
+        with self._connection() as conn:
+            # Build a map of section_id -> list of NER entity names
+            section_entities: dict[str, list[str]] = {}
+            try:
+                result = conn.execute(
+                    "MATCH (s:Section)-[r:SECTION_ENTITY]->(e:Entity) "
+                    "WHERE e.source = 'ner' "
+                    "RETURN s.id, e.id, e.type"
+                )
+                df = result.get_as_df()
+                for _, row in df.iterrows():
+                    sid = str(row["s.id"])
+                    section_entities.setdefault(sid, []).append(str(row["e.id"]))
+            except Exception:
+                logger.debug("Failed to query section-entity links", exc_info=True)
+
+            # Nodes
+            for label, cols in [
+                ("File", "n.id, n.title, n.checksum"),
+                ("Section", "n.id, n.heading, n.level, n.file_path, n.text_preview"),
+                ("Entity", "n.id, n.type, n.source"),
+                ("Tag", "n.id"),
+            ]:
+                try:
+                    result = conn.execute(f"MATCH (n:{label}) RETURN {cols}")
+                    df = result.get_as_df()
+                    for _, row in df.iterrows():
+                        props = {c.split(".")[-1]: row[c] for c in df.columns if c != "n.id"}
+                        node_id = str(row["n.id"])
+                        if label == "Section" and node_id in section_entities:
+                            props["ner_entities"] = section_entities[node_id]
+                        nodes.append({
+                            "id": node_id,
+                            "label": label,
+                            "properties": props,
+                        })
+                except Exception:
+                    logger.debug("Failed to query %s nodes", label, exc_info=True)
+
+            # Edges
+            for rel_table in _REL_TABLE_MAP.values():
+                try:
+                    result = conn.execute(
+                        f"MATCH (a)-[r:{rel_table}]->(b) "
+                        "RETURN a.id, b.id, r.rel_type, r.weight"
+                    )
+                    df = result.get_as_df()
+                    for _, row in df.iterrows():
+                        edges.append({
+                            "source": str(row["a.id"]),
+                            "target": str(row["b.id"]),
+                            "relation_type": str(row["r.rel_type"]),
+                            "weight": float(row["r.weight"]),
+                        })
+                except Exception:
+                    logger.debug("Failed to query %s edges", rel_table, exc_info=True)
+
+        return {"nodes": nodes, "edges": edges}
+
     def node_count(self) -> int:
         """Return the total number of nodes in the graph."""
         total = 0
