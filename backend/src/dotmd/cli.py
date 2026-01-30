@@ -126,3 +126,12 @@ def serve(host: str, port: int) -> None:
 
     click.echo(f"Starting dotMD API on {host}:{port}")
     run_server(host=host, port=port)
+
+
+@main.command()
+def mcp() -> None:
+    """Start the MCP (Model Context Protocol) server."""
+    from dotmd.mcp_server import mcp as mcp_app
+
+    click.echo("Starting dotMD MCP server...")
+    mcp_app.run()
