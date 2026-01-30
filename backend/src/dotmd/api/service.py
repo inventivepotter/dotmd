@@ -57,7 +57,6 @@ class DotMDService:
 
         # Query expansion and reranking.
         self._query_expander = QueryExpander(
-            self._pipeline.metadata_store,
             acronym_dict=acronym_dict,
         )
         self._reranker = Reranker(
@@ -150,7 +149,6 @@ class DotMDService:
             semantic_hits = self._semantic_engine.search(search_query, top_k=pool_size)
 
         if mode in ("bm25", "hybrid"):
-            self._bm25_engine.load_index()
             bm25_hits = self._bm25_engine.search(search_query, top_k=pool_size)
 
         if mode in ("graph", "hybrid"):
@@ -160,7 +158,6 @@ class DotMDService:
                 # When running in graph-only mode, first obtain seeds from
                 # both semantic and BM25 engines.
                 sem_seeds = self._semantic_engine.search(search_query, top_k=pool_size)
-                self._bm25_engine.load_index()
                 bm25_seeds = self._bm25_engine.search(search_query, top_k=pool_size)
                 seed_ids = list(
                     dict.fromkeys(

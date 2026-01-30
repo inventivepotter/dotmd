@@ -82,3 +82,4 @@ Settings via environment variables (prefix `DOTMD_`):
 - New extractors: implement `ExtractorProtocol` from `extraction/base.py`
 - New search engines: implement `SearchEngineProtocol` from `search/base.py`
 - All public APIs go through `api/service.py` — never expose internals directly
+- **Never reload indexes per-request.** BM25, vector, and graph indexes must be loaded once at startup (in `DotMDService.load_models`) and reused across queries. Calling `load_index()` inside search methods causes disk I/O on every request and kills performance.

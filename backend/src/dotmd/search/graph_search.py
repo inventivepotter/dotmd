@@ -87,57 +87,14 @@ class GraphSearchEngine:
         seed_set = set(seed_chunk_ids)
 
         for seed_id in seed_chunk_ids:
-            # get_neighbors returns (node_id, relation_type, weight) tuples.
-            # We perform a multi-hop expansion by calling with max_hops=2;
-            # the store is expected to return all reachable nodes within
-            # that radius.  We approximate hop distance based on the
-            # relation_type and weight returned.
+            # Single call with max_hops=2 returns both hop-1 and hop-2 nodes.
+            # All returned nodes are scored as hop-1 (weight as-is) since the
+            # store already limits the radius and hop-2 nodes naturally have
+            # lower edge weights.
             neighbors = self._graph_store.get_neighbors(seed_id, max_hops=2)
-
-            # Build a per-seed scoring map.  Since get_neighbors returns
-            # a flat list without explicit hop information, we infer hop
-            # distance heuristically:
-            #   - hop 1: direct neighbours (first pass)
-            #   - hop 2: anything else returned within the radius
-            #
-            # We collect direct neighbours first, then treat the rest as
-            # hop-2 nodes.
-            direct_neighbor_ids: set[str] = set()
             for node_id, _rel, weight in neighbors:
-                if node_id == seed_id:
-                    continue
-                # First encounter → assume hop 1
-                direct_neighbor_ids.add(node_id)
-
-            # Now score.  For a flat neighbour list the safest approach
-            # is to assign hop 1 to all returned nodes (since the store
-            # already limits the radius).  If the store provides
-            # second-hop results they will naturally have lower edge
-            # weights, which still downweights them in the sum.
-            #
-            # To incorporate hop distance more precisely we perform a
-            # two-pass strategy: first query with max_hops=1 to identify
-            # direct neighbours, then use the full list to derive hop 2
-            # nodes.
-            hop1_neighbors = self._graph_store.get_neighbors(seed_id, max_hops=1)
-            hop1_ids: set[str] = set()
-            hop1_weight: dict[str, float] = {}
-            for node_id, _rel, weight in hop1_neighbors:
-                if node_id == seed_id:
-                    continue
-                hop1_ids.add(node_id)
-                # Keep the maximum weight if multiple edges exist.
-                hop1_weight[node_id] = max(hop1_weight.get(node_id, 0.0), weight)
-
-            # Score hop-1 nodes: weight / 1^2 = weight
-            for node_id in hop1_ids:
-                aggregated_scores[node_id] += hop1_weight[node_id]
-
-            # Score hop-2 nodes: weight / 2^2 = weight / 4
-            for node_id, _rel, weight in neighbors:
-                if node_id == seed_id or node_id in hop1_ids:
-                    continue
-                aggregated_scores[node_id] += weight / 4.0
+                if node_id != seed_id:
+                    aggregated_scores[node_id] += weight
 
         # Exclude the seed chunks themselves so the fusion layer does not
         # double-count results already present from another engine.
