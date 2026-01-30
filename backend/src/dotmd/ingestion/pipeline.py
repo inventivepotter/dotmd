@@ -45,7 +45,9 @@ class IndexingPipeline:
         # -- storage backends --------------------------------------------------
         self._metadata_store = SQLiteMetadataStore(settings.sqlite_path)
         self._vector_store = LanceDBVectorStore(settings.lancedb_path)
-        self._graph_store = LadybugDBGraphStore(settings.graph_db_path)
+        self._graph_store = LadybugDBGraphStore(
+            settings.graph_db_path, read_only=settings.read_only,
+        )
 
         # -- search engines (used for encoding during indexing) ----------------
         self._semantic_engine = SemanticSearchEngine(

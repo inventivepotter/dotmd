@@ -19,6 +19,8 @@ dependencies = [
     "pydantic-settings>=2.0",
     "pyyaml>=6.0",
     "pandas>=2.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
 ]
 
 [project.scripts]

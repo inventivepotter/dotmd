@@ -67,7 +67,7 @@ def index(directory: Path, extract_depth: str, entity_types: str | None) -> None
 @click.option("--no-expand", is_flag=True, help="Skip query expansion.")
 def search(query: str, top: int, mode: str, no_rerank: bool, no_expand: bool) -> None:
     """Search the indexed knowledgebase."""
-    service = _get_service()
+    service = _get_service(read_only=True)
     results = service.search(
         query=query,
         top_k=top,
@@ -92,7 +92,7 @@ def search(query: str, top: int, mode: str, no_rerank: bool, no_expand: bool) ->
 @main.command()
 def status() -> None:
     """Show index statistics."""
-    service = _get_service()
+    service = _get_service(read_only=True)
     stats = service.status()
 
     if stats is None:
@@ -115,3 +115,14 @@ def clear() -> None:
     service = _get_service()
     service.clear()
     click.echo("Index cleared.")
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", help="Bind host.")
+@click.option("--port", "-p", default=8000, help="Bind port.")
+def serve(host: str, port: int) -> None:
+    """Start the REST API server."""
+    from dotmd.api.server import main as run_server
+
+    click.echo(f"Starting dotMD API on {host}:{port}")
+    run_server(host=host, port=port)

@@ -71,6 +71,14 @@ class DotMDService:
     # Public API
     # ------------------------------------------------------------------
 
+    def warmup(self) -> None:
+        """Eagerly load ML models so first query is fast."""
+        logger.info("Warming up models...")
+        self._semantic_engine._load_model()
+        self._reranker._load_model()
+        self._bm25_engine.load_index()
+        logger.info("Models ready")
+
     def index(self, directory: Path) -> IndexStats:
         """Index all markdown files under *directory*.
 

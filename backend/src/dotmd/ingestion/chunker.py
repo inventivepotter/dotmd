@@ -144,7 +144,6 @@ def chunk_file(
     # Index 0 is unused (level 0 = no heading); indices 1-6 correspond to
     # ``#`` through ``######``.
     hierarchy: list[str] = [""] * 7
-
     for level, heading, body, char_offset in sections:
         if level > 0:
             hierarchy[level] = heading
@@ -153,7 +152,20 @@ def chunk_file(
                 hierarchy[i] = ""
 
         current_hierarchy = [h for h in hierarchy[1 : level + 1] if h] if level > 0 else []
-        section_text = body.strip()
+
+        # --- Improvement 1 & 2: include heading + hierarchy in chunk text ---
+        # Prepend the full heading path so search engines can match on
+        # contextual terms (e.g. "principles" matches each principle chunk).
+        body_stripped = body.strip()
+        if not body_stripped and not heading:
+            continue
+
+        parts: list[str] = []
+        if current_hierarchy:
+            parts.append(" > ".join(current_hierarchy))
+        if body_stripped:
+            parts.append(body_stripped)
+        section_text = "\n\n".join(parts) if parts else ""
         if not section_text:
             continue
 

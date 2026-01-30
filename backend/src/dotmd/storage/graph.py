@@ -8,7 +8,9 @@ zero-configuration graph storage.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import real_ladybug as lb  # type: ignore[import-untyped]
 
@@ -54,11 +56,31 @@ class LadybugDBGraphStore:
         File-system path for the embedded LadybugDB database directory.
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, *, read_only: bool = False) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = lb.Database(str(db_path))
-        self._conn = lb.Connection(self._db)
-        self._init_schema()
+        self._db_path = str(db_path)
+        self._read_only = read_only
+        self._db: lb.Database | None = None
+        self._conn: lb.Connection | None = None
+        if not read_only:
+            # Write mode: hold a persistent connection
+            self._db = lb.Database(self._db_path)
+            self._conn = lb.Connection(self._db)
+            self._init_schema()
+
+    @contextmanager
+    def _connection(self) -> Iterator[lb.Connection]:
+        """Yield a connection, opening a temporary one in read-only mode."""
+        if self._conn is not None:
+            yield self._conn
+        else:
+            db = lb.Database(self._db_path, read_only=True)
+            conn = lb.Connection(db)
+            try:
+                yield conn
+            finally:
+                del conn
+                del db
 
     def _init_schema(self) -> None:
         """Create node and relationship tables if they don't exist."""
@@ -77,10 +99,11 @@ class LadybugDBGraphStore:
         title: str,
         checksum: str,
     ) -> None:
-        self._conn.execute(
-            "MERGE (f:File {id: $id}) SET f.title = $title, f.checksum = $checksum",
-            parameters={"id": file_path, "title": title, "checksum": checksum},
-        )
+        with self._connection() as conn:
+            conn.execute(
+                "MERGE (f:File {id: $id}) SET f.title = $title, f.checksum = $checksum",
+                parameters={"id": file_path, "title": title, "checksum": checksum},
+            )
 
     def add_section_node(
         self,
@@ -90,18 +113,19 @@ class LadybugDBGraphStore:
         file_path: str,
         text_preview: str,
     ) -> None:
-        self._conn.execute(
-            "MERGE (s:Section {id: $id}) "
-            "SET s.heading = $heading, s.level = $level, "
-            "s.file_path = $file_path, s.text_preview = $text_preview",
-            parameters={
-                "id": chunk_id,
-                "heading": heading,
-                "level": level,
-                "file_path": file_path,
-                "text_preview": text_preview,
-            },
-        )
+        with self._connection() as conn:
+            conn.execute(
+                "MERGE (s:Section {id: $id}) "
+                "SET s.heading = $heading, s.level = $level, "
+                "s.file_path = $file_path, s.text_preview = $text_preview",
+                parameters={
+                    "id": chunk_id,
+                    "heading": heading,
+                    "level": level,
+                    "file_path": file_path,
+                    "text_preview": text_preview,
+                },
+            )
 
     def add_entity_node(
         self,
@@ -109,16 +133,18 @@ class LadybugDBGraphStore:
         entity_type: str,
         source: str,
     ) -> None:
-        self._conn.execute(
-            "MERGE (e:Entity {id: $id}) SET e.type = $type, e.source = $source",
-            parameters={"id": name, "type": entity_type, "source": source},
-        )
+        with self._connection() as conn:
+            conn.execute(
+                "MERGE (e:Entity {id: $id}) SET e.type = $type, e.source = $source",
+                parameters={"id": name, "type": entity_type, "source": source},
+            )
 
     def add_tag_node(self, name: str) -> None:
-        self._conn.execute(
-            "MERGE (t:Tag {id: $id})",
-            parameters={"id": name},
-        )
+        with self._connection() as conn:
+            conn.execute(
+                "MERGE (t:Tag {id: $id})",
+                parameters={"id": name},
+            )
 
     # -- edge creation ------------------------------------------------------
 
@@ -129,40 +155,41 @@ class LadybugDBGraphStore:
         relation_type: str,
         weight: float = 1.0,
     ) -> None:
-        # Determine node labels by querying which table each id belongs to.
-        src_label = self._find_node_label(source_id)
-        tgt_label = self._find_node_label(target_id)
+        with self._connection() as conn:
+            # Determine node labels by querying which table each id belongs to.
+            src_label = self._find_node_label(source_id, conn)
+            tgt_label = self._find_node_label(target_id, conn)
 
-        if src_label is None or tgt_label is None:
-            logger.warning(
-                "Cannot add edge: node not found (src=%s [%s], tgt=%s [%s])",
-                source_id, src_label, target_id, tgt_label,
+            if src_label is None or tgt_label is None:
+                logger.warning(
+                    "Cannot add edge: node not found (src=%s [%s], tgt=%s [%s])",
+                    source_id, src_label, target_id, tgt_label,
+                )
+                return
+
+            rel_table = _REL_TABLE_MAP.get((src_label, tgt_label))
+            if rel_table is None:
+                logger.warning(
+                    "No relationship table for %s -> %s", src_label, tgt_label,
+                )
+                return
+
+            conn.execute(
+                f"MATCH (a:{src_label} {{id: $src}}), (b:{tgt_label} {{id: $tgt}}) "
+                f"MERGE (a)-[r:{rel_table}]->(b) "
+                "SET r.rel_type = $rel_type, r.weight = $weight",
+                parameters={
+                    "src": source_id,
+                    "tgt": target_id,
+                    "rel_type": relation_type,
+                    "weight": weight,
+                },
             )
-            return
 
-        rel_table = _REL_TABLE_MAP.get((src_label, tgt_label))
-        if rel_table is None:
-            logger.warning(
-                "No relationship table for %s -> %s", src_label, tgt_label,
-            )
-            return
-
-        self._conn.execute(
-            f"MATCH (a:{src_label} {{id: $src}}), (b:{tgt_label} {{id: $tgt}}) "
-            f"MERGE (a)-[r:{rel_table}]->(b) "
-            "SET r.rel_type = $rel_type, r.weight = $weight",
-            parameters={
-                "src": source_id,
-                "tgt": target_id,
-                "rel_type": relation_type,
-                "weight": weight,
-            },
-        )
-
-    def _find_node_label(self, node_id: str) -> str | None:
+    def _find_node_label(self, node_id: str, conn: lb.Connection) -> str | None:
         """Find which node table a given id belongs to."""
         for label in ("File", "Section", "Entity", "Tag"):
-            result = self._conn.execute(
+            result = conn.execute(
                 f"MATCH (n:{label} {{id: $id}}) RETURN n.id",
                 parameters={"id": node_id},
             )
@@ -181,24 +208,23 @@ class LadybugDBGraphStore:
         # but for simplicity we query all rel tables with multi-hop.
         neighbors: list[tuple[str, str, float]] = []
 
-        src_label = self._find_node_label(node_id)
-        if src_label is None:
-            return neighbors
+        with self._connection() as conn:
+            src_label = self._find_node_label(node_id, conn)
+            if src_label is None:
+                return neighbors
 
-        # Query using recursive/variable-length path
-        # LadybugDB Cypher supports (a)-[r*1..N]-(b) syntax
-        result = self._conn.execute(
-            f"MATCH (a:{src_label} {{id: $id}})-[r* 1..{int(max_hops)}]-(b) "
-            "RETURN DISTINCT b.id, label(b)",
-            parameters={"id": node_id},
-        )
+            result = conn.execute(
+                f"MATCH (a:{src_label} {{id: $id}})-[r* 1..{int(max_hops)}]-(b) "
+                "RETURN DISTINCT b.id, label(b)",
+                parameters={"id": node_id},
+            )
 
-        df = result.get_as_df()
-        for _, row in df.iterrows():
-            nid = row.iloc[0]
-            if nid == node_id:
-                continue
-            neighbors.append((str(nid), "", 1.0))
+            df = result.get_as_df()
+            for _, row in df.iterrows():
+                nid = row.iloc[0]
+                if nid == node_id:
+                    continue
+                neighbors.append((str(nid), "", 1.0))
 
         return neighbors
 
@@ -206,40 +232,42 @@ class LadybugDBGraphStore:
 
     def delete_all(self) -> None:
         """Remove all nodes and edges from the graph."""
-        # Drop all relationship data first, then nodes
-        for stmt in reversed(_SCHEMA_INIT):
-            table_name = stmt.split("IF NOT EXISTS")[1].strip().split("(")[0].strip() if "IF NOT EXISTS" in stmt else None
-            if table_name:
+        with self._connection() as conn:
+            for stmt in reversed(_SCHEMA_INIT):
+                table_name = stmt.split("IF NOT EXISTS")[1].strip().split("(")[0].strip() if "IF NOT EXISTS" in stmt else None
+                if table_name:
+                    try:
+                        conn.execute(f"MATCH ()-[r:{table_name}]->() DELETE r")
+                    except Exception:
+                        pass
+            for label in ("File", "Section", "Entity", "Tag"):
                 try:
-                    self._conn.execute(f"MATCH ()-[r:{table_name}]->() DELETE r")
+                    conn.execute(f"MATCH (n:{label}) DELETE n")
                 except Exception:
                     pass
-        for label in ("File", "Section", "Entity", "Tag"):
-            try:
-                self._conn.execute(f"MATCH (n:{label}) DELETE n")
-            except Exception:
-                pass
 
     def node_count(self) -> int:
         """Return the total number of nodes in the graph."""
         total = 0
-        for label in ("File", "Section", "Entity", "Tag"):
-            try:
-                result = self._conn.execute(f"MATCH (n:{label}) RETURN count(n)")
-                df = result.get_as_df()
-                total += int(df.iloc[0, 0])
-            except Exception:
-                pass
+        with self._connection() as conn:
+            for label in ("File", "Section", "Entity", "Tag"):
+                try:
+                    result = conn.execute(f"MATCH (n:{label}) RETURN count(n)")
+                    df = result.get_as_df()
+                    total += int(df.iloc[0, 0])
+                except Exception:
+                    pass
         return total
 
     def edge_count(self) -> int:
         """Return the total number of edges in the graph."""
         total = 0
-        for rel_table in _REL_TABLE_MAP.values():
-            try:
-                result = self._conn.execute(f"MATCH ()-[r:{rel_table}]->() RETURN count(r)")
-                df = result.get_as_df()
-                total += int(df.iloc[0, 0])
-            except Exception:
-                pass
+        with self._connection() as conn:
+            for rel_table in _REL_TABLE_MAP.values():
+                try:
+                    result = conn.execute(f"MATCH ()-[r:{rel_table}]->() RETURN count(r)")
+                    df = result.get_as_df()
+                    total += int(df.iloc[0, 0])
+                except Exception:
+                    pass
         return total

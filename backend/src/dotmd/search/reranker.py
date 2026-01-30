@@ -41,7 +41,7 @@ class Reranker:
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
         length_penalty: bool = True,
         min_length: int = 100,
-        score_threshold: float = -5.0,
+        score_threshold: float = -8.0,
     ) -> None:
         self._model_name = model_name
         self._model: Any | None = None
