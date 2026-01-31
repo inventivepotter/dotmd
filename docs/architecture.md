@@ -56,6 +56,12 @@ flowchart TD
     I -.->|term scores| S2
     M -.->|neighbor traversal\nmax 2 hops| S3
     E -.->|chunk text for\nreranking + snippets| RR
+
+    subgraph MCP["MCP Server (FastMCP, stdio)"]
+        MCP_S[search tool] --> Q
+        MCP_I[index tool] --> A
+        MCP_ST[status tool] --> E
+    end
 ```
 
 ## Pipeline Stages
@@ -71,7 +77,7 @@ flowchart TD
 | Store | Technology | Contents |
 |-------|-----------|----------|
 | SQLite | `~/.dotmd/metadata.db` | Chunk text, heading hierarchy, file path, offsets |
-| LanceDB | `~/.dotmd/lancedb/` | Dense vectors from `all-MiniLM-L6-v2` |
+| LanceDB | `~/.dotmd/lancedb/` | Dense vectors from `BAAI/bge-small-en-v1.5` |
 | BM25 | `~/.dotmd/bm25_index.pkl` | Tokenized corpus for keyword scoring |
 
 ### 3. Extraction
@@ -98,3 +104,17 @@ LadybugDB stores a property graph with four node types (File, Section, Entity, T
 - Length penalty applied to chunks under 100 characters: `factor = 0.5 + 0.5 × (len/100)`
 - Score threshold filter at `-8.0`
 - Final top-K returned with per-engine scores, snippets, and heading paths
+
+### 7. MCP Server
+
+The MCP server (`mcp_server.py`) wraps the full pipeline above as three MCP tools using [FastMCP](https://github.com/modelcontextprotocol/python-sdk) over stdio transport:
+
+| Tool | Description |
+|------|-------------|
+| `search` | Runs the query pipeline (stages 5-6) with configurable mode, top-k, and reranking |
+| `index` | Runs the ingestion + storage + extraction pipeline (stages 1-4) for a directory |
+| `status` | Returns index statistics from SQLite metadata |
+
+The server uses a lazy singleton `DotMDService` — models load on first request and are reused. This avoids per-request disk I/O and keeps latency low after warmup.
+
+> **Constraint:** The MCP server and REST API server cannot run simultaneously — they share a LadybugDB graph connection that only supports a single process.

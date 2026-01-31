@@ -33,6 +33,14 @@ mcp dev backend/src/dotmd/mcp_server.py
 
 Add dotMD to your agent's MCP server config:
 
+To get the MCP config with absolute paths for your environment:
+
+```bash
+dotmd mcp-config
+```
+
+This outputs JSON you can paste directly into your client's config.
+
 ### Claude Code / Claude Desktop
 
 Add to your `claude_desktop_config.json` or `.mcp.json`:
@@ -41,7 +49,7 @@ Add to your `claude_desktop_config.json` or `.mcp.json`:
 {
   "mcpServers": {
     "dotmd": {
-      "command": "python",
+      "command": "/absolute/path/to/.venv/bin/dotmd",
       "args": ["mcp"]
     }
   }
@@ -56,12 +64,14 @@ Add to `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "dotmd": {
-      "command": "python",
+      "command": "/absolute/path/to/.venv/bin/dotmd",
       "args": ["mcp"]
     }
   }
 }
 ```
+
+If your client runs from the project root, you can use a relative path like `./backend/.venv/bin/dotmd` instead.
 
 ## Tools
 
