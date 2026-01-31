@@ -55,6 +55,63 @@ dotmd search "query" --no-expand       # Skip query expansion
 dotmd search "query" --top 5           # Limit results
 ```
 
+### REST API server
+
+```bash
+dotmd serve                          # Start on localhost:8000
+dotmd serve --host 0.0.0.0 -p 9000  # Custom host and port
+```
+
+### MCP server
+
+The MCP server uses stdio transport and is launched by an MCP client (Claude Code, VS Code, Cursor, OpenCode, etc.).
+
+> **Important:** The API server and MCP server cannot run at the same time — they share a graph database that only supports a single connection.
+
+To get the MCP config with absolute paths for your environment, run:
+
+```bash
+dotmd mcp-config
+```
+
+This outputs JSON you can paste directly into your client's MCP config:
+
+```json
+{
+  "dotmd": {
+    "command": "/absolute/path/to/.venv/bin/dotmd",
+    "args": ["mcp"]
+  }
+}
+```
+
+If your MCP client runs from the project root, you can use a relative path instead:
+
+```json
+{
+  "dotmd": {
+    "command": "./backend/.venv/bin/dotmd",
+    "args": ["mcp"]
+  }
+}
+```
+
+### Docker
+
+```bash
+# Build
+docker compose build
+
+# Index your files (place markdown in ./data/)
+docker compose run api index /data
+
+# Start the API server
+docker compose up api
+
+# Rebuild after code changes
+docker compose up api --build
+```
+
 ### Index management
 
 ```bash

@@ -63,10 +63,12 @@ class LadybugDBGraphStore:
         self._db: lb.Database | None = None
         self._conn: lb.Connection | None = None
         if not read_only:
-            # Write mode: hold a persistent connection
             self._db = lb.Database(self._db_path)
             self._conn = lb.Connection(self._db)
             self._init_schema()
+        elif Path(self._db_path).exists():
+            self._db = lb.Database(self._db_path, read_only=True)
+            self._conn = lb.Connection(self._db)
 
     @contextmanager
     def _connection(self) -> Iterator[lb.Connection]:

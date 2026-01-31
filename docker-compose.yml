@@ -1,15 +1,21 @@
+x-common: &common
+  build:
+    context: ./backend
+  volumes:
+    - ./data:/data
+    - ./persistence:/dotmd-index
+  environment:
+    - DOTMD_DATA_DIR=/data
+    - DOTMD_INDEX_DIR=/dotmd-index
+    - DOTMD_EXTRACT_DEPTH=ner
+
 services:
-  dotmd:
-    build:
-      context: ./backend
-    volumes:
-      - ./data:/data
-      - ./persistence:/dotmd-index
-    environment:
-      - DOTMD_DATA_DIR=/data
-      - DOTMD_INDEX_DIR=/dotmd-index
-      - DOTMD_EXTRACT_DEPTH=ner
-    # Default: show help. Override with:
-    #   docker compose run dotmd index /data
-    #   docker compose run dotmd search "your query"
-    command: ["--help"]
+  api:
+    <<: *common
+    ports:
+      - "8000:8000"
+    command: ["serve", "--host", "0.0.0.0"]
+
+  mcp:
+    <<: *common
+    command: ["mcp"]

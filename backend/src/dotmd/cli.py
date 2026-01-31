@@ -135,3 +135,22 @@ def mcp() -> None:
 
     click.echo("Starting dotMD MCP server...")
     mcp_app.run()
+
+
+@main.command("mcp-config")
+def mcp_config() -> None:
+    """Print MCP client configuration JSON with absolute paths."""
+    import json
+    import shutil
+    import sys
+
+    dotmd_bin = shutil.which("dotmd") or sys.executable
+    config = {
+        "dotmd": {
+            "command": str(Path(dotmd_bin).resolve()),
+            "args": ["mcp"],
+        }
+    }
+    click.echo(json.dumps(config, indent=2))
+
+

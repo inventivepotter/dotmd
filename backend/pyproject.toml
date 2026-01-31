@@ -24,6 +24,12 @@ dependencies = [
     "mcp[cli]>=1.0",
 ]
 
+[project.optional-dependencies]
+eval = [
+    "openai>=1.0",
+    "tqdm>=4.60",
+]
+
 [project.scripts]
 dotmd = "dotmd.cli:main"
 
