@@ -133,7 +133,7 @@ def mcp() -> None:
     """Start the MCP (Model Context Protocol) server."""
     from dotmd.mcp_server import mcp as mcp_app
 
-    click.echo("Starting dotMD MCP server...")
+    click.echo("Starting dotMD MCP server...", err=True)
     mcp_app.run()
 
 
