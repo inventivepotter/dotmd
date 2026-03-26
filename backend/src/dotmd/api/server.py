@@ -30,7 +30,7 @@ def _get_service() -> DotMDService:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _service  # noqa: PLW0603
-    _service = DotMDService(Settings(read_only=True))
+    _service = DotMDService(Settings())
     _service.warmup()
     yield
     _service = None
@@ -84,11 +84,7 @@ class GraphResponse(BaseModel):
 @app.post("/index", response_model=IndexStats)
 async def index(req: IndexRequest) -> IndexStats:
     """Index all markdown files under the given directory."""
-    overrides: dict[str, object] = {"extract_depth": req.extract_depth}
-    if req.entity_types is not None:
-        overrides["ner_entity_types"] = req.entity_types
-    service = DotMDService(Settings(**overrides))  # type: ignore[arg-type]
-    return service.index(Path(req.directory))
+    return _get_service().index(Path(req.directory))
 
 
 @app.get("/search", response_model=SearchResponse)
