@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-from dotmd.core.models import Chunk, IndexStats
+from dotmd.core.models import Chunk, FileInfo, IndexStats
 
 # ---------------------------------------------------------------------------
 # SQL constants
@@ -64,6 +64,22 @@ ON CONFLICT(id) DO UPDATE SET
     last_indexed   = excluded.last_indexed
 """
 
+_CREATE_FILES = """
+CREATE TABLE IF NOT EXISTS files (
+    file_path    TEXT PRIMARY KEY,
+    checksum     TEXT NOT NULL,
+    last_indexed TEXT
+)
+"""
+
+_UPSERT_FILE = """
+INSERT INTO files (file_path, checksum, last_indexed)
+VALUES (?, ?, ?)
+ON CONFLICT(file_path) DO UPDATE SET
+    checksum     = excluded.checksum,
+    last_indexed = excluded.last_indexed
+"""
+
 
 # ---------------------------------------------------------------------------
 # Implementation
@@ -86,6 +102,7 @@ class SQLiteMetadataStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(_CREATE_CHUNKS)
         self._conn.execute(_CREATE_STATS)
+        self._conn.execute(_CREATE_FILES)
         self._conn.commit()
 
     # -- chunks -------------------------------------------------------------
@@ -179,12 +196,33 @@ class SQLiteMetadataStore:
             last_indexed=last_indexed,
         )
 
+    # -- file checksums -----------------------------------------------------
+
+    def save_file_checksums(self, files: list[FileInfo]) -> None:
+        """Persist the checksum for each indexed file."""
+        now = datetime.now(tz=timezone.utc).isoformat()
+        rows = [(str(f.path), f.checksum, now) for f in files]
+        self._conn.executemany(_UPSERT_FILE, rows)
+        self._conn.commit()
+
+    def get_file_checksums(self) -> dict[str, str]:
+        """Return a mapping of file_path → checksum for all tracked files."""
+        cur = self._conn.execute("SELECT file_path, checksum FROM files")
+        return {row[0]: row[1] for row in cur.fetchall()}
+
+    def delete_chunks_by_file(self, file_path: str) -> None:
+        """Remove all chunks belonging to *file_path*."""
+        self._conn.execute("DELETE FROM chunks WHERE file_path = ?", (file_path,))
+        self._conn.execute("DELETE FROM files WHERE file_path = ?", (file_path,))
+        self._conn.commit()
+
     # -- housekeeping -------------------------------------------------------
 
     def delete_all(self) -> None:
-        """Remove all chunks and statistics from the store."""
+        """Remove all chunks, statistics, and file checksums from the store."""
         self._conn.execute("DELETE FROM chunks")
         self._conn.execute("DELETE FROM stats")
+        self._conn.execute("DELETE FROM files")
         self._conn.commit()
 
     # -- helpers ------------------------------------------------------------
