@@ -39,15 +39,28 @@ def _get_service(**overrides: object) -> DotMDService:
     default=None,
     help="Comma-separated GLiNER entity types (e.g. 'person,technology,concept').",
 )
-def index(directory: Path, extract_depth: str, entity_types: str | None) -> None:
-    """Index all markdown files in DIRECTORY."""
+@click.option(
+    "--force", "-f",
+    is_flag=True,
+    default=False,
+    help="Reprocess all files, ignoring cached checksums.",
+)
+def index(directory: Path, extract_depth: str, entity_types: str | None, force: bool) -> None:
+    """Index all markdown files in DIRECTORY.
+
+    Only files that have changed since the last run are reprocessed.
+    Use --force to reindex everything from scratch.
+    """
     overrides: dict[str, object] = {"extract_depth": extract_depth}
     if entity_types:
         overrides["ner_entity_types"] = [t.strip() for t in entity_types.split(",")]
 
     service = _get_service(**overrides)
-    click.echo(f"Indexing {directory}...")
-    stats = service.index(directory)
+    if force:
+        click.echo(f"Indexing {directory} (force mode)...")
+    else:
+        click.echo(f"Indexing {directory}...")
+    stats = service.index(directory, force=force)
     click.echo(
         f"Done. {stats.total_files} files, {stats.total_chunks} chunks, "
         f"{stats.total_entities} entities, {stats.total_edges} edges."
